@@ -131,7 +131,33 @@ async def serve_index():
   <script type="module" crossorigin src="/assets/index.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index.css">
 </head>
-<body><div id="root"></div></body>
+<body>
+<div id="root"></div>
+<div id="scrape-banner" style="position:fixed;bottom:20px;right:20px;z-index:9999;background:#1c1c1c;border:1px solid #363636;border-radius:10px;padding:14px 18px;font-family:sans-serif;font-size:13px;color:#e8e6e0;box-shadow:0 8px 24px rgba(0,0,0,0.5)">
+  <div style="margin-bottom:8px;font-weight:600;color:#e8593c">📡 Load Real Data</div>
+  <div style="color:#8a8880;font-size:12px;margin-bottom:10px">Scrape Myneta.info for real officials</div>
+  <button onclick="runScrape()" id="scrape-btn" style="background:#e8593c;color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;width:100%">Start Scrape</button>
+  <div id="scrape-status" style="font-size:11px;color:#4ade80;margin-top:8px;display:none">✓ Scrape started! Refresh in 5 mins.</div>
+  <div style="margin-top:8px;text-align:right"><span onclick="document.getElementById('scrape-banner').style.display='none'" style="font-size:11px;color:#5a5856;cursor:pointer">dismiss</span></div>
+</div>
+<script>
+async function runScrape() {{
+  const btn = document.getElementById('scrape-btn');
+  const status = document.getElementById('scrape-status');
+  btn.textContent = 'Running...';
+  btn.disabled = true;
+  try {{
+    const r = await fetch('/api/scrape/run-full', {{method:'POST'}});
+    const d = await r.json();
+    status.style.display = 'block';
+    btn.textContent = 'Started!';
+  }} catch(e) {{
+    btn.textContent = 'Error - try again';
+    btn.disabled = false;
+  }}
+}}
+</script>
+</body>
 </html>""")
 
 # Catch-all for React Router (SPA)
