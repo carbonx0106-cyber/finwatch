@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker, selectinload
 from sqlalchemy import Column, Integer, String, Float, Boolean, Text, DateTime, ForeignKey, select, func, or_
 from contextlib import asynccontextmanager
-import httpx, os, logging, base64
+import httpx, os, logging, asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 
 # Frontend assets (embedded)
@@ -122,12 +124,59 @@ async def seed():
         logger.info(f"Seeded {len(real_officials)} real officials from EC affidavits")
 
 
+async def refresh_from_myneta():
+    """Runs nightly — fetches latest affidavit data and updates risk scores."""
+    logger.info("Nightly refresh started...")
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Official).where(Official.ec_affidavit_url.isnot(None)))
+            officials = result.scalars().all()
+            updated = 0
+            async with httpx.AsyncClient(timeout=20, headers={"User-Agent": "Mozilla/5.0"}) as client:
+                for o in officials:
+                    if not o.ec_affidavit_url or "myneta.info" not in o.ec_affidavit_url:
+                        continue
+                    try:
+                        r = await client.get(o.ec_affidavit_url)
+                        if r.status_code == 200:
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(r.text, "lxml")
+                            # Extract total assets from affidavit table
+                            total = 0
+                            for td in soup.find_all("td"):
+                                txt = td.get_text(strip=True).replace(",","")
+                                if txt.startswith("Rs") or txt.startswith("₹"):
+                                    try:
+                                        val = float(txt.replace("Rs","").replace("₹","").strip())
+                                        total = max(total, val)
+                                    except: pass
+                            if total > 0:
+                                new_cr = round(total / 1e7, 2)
+                                if new_cr != o.declared_assets_cr:
+                                    o.declared_assets_cr = new_cr
+                                    o.last_synced = datetime.utcnow()
+                                    updated += 1
+                        await asyncio.sleep(2)  # polite delay
+                    except Exception as e:
+                        logger.warning(f"Refresh failed for {o.name}: {e}")
+            await db.commit()
+            logger.info(f"Nightly refresh complete — {updated} officials updated")
+    except Exception as e:
+        logger.error(f"Refresh job error: {e}")
+
+scheduler = AsyncIOScheduler()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await seed()
+    # Schedule nightly refresh at 2am IST (8:30pm UTC)
+    scheduler.add_job(refresh_from_myneta, CronTrigger(hour=20, minute=30))
+    scheduler.start()
+    logger.info("Scheduler started — nightly refresh at 2am IST")
     yield
+    scheduler.shutdown()
 
 app = FastAPI(title="FinWatch India API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
