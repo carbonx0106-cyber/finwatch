@@ -78,8 +78,8 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 async def seed():
     async with AsyncSessionLocal() as db:
-        if (await db.execute(select(func.count(Official.id)))).scalar() > 0:
-            return
+       if False:
+    return
         # Real publicly available data from Election Commission affidavits (Myneta.info)
         real_officials = [
             {"name":"Narendra Modi","initials":"NM","role":"MP, Lok Sabha","state":"Gujarat","ministry":"Prime Minister","party":"BJP","declared_assets_cr":3.02,"unexplained_wealth_cr":0,"risk_score":12,"risk_level":"Low","pan_partial":"XXXXX1234X","ec_affidavit_url":"https://myneta.info/loksabha2024/candidate.php?candidate_id=5765","myneta_id":"ls2024_5765","source":"myneta",
